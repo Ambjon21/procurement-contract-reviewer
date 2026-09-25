@@ -14,6 +14,11 @@ with st.expander("User Guidelines & How to Use", expanded=True):
     1. **Enter API Key:** Provide your OpenAI API key in the left sidebar configuration panel.
     2. **Select Input Source:** Choose to either paste raw contract text/clauses or upload a PDF document.
     3. **Run Analysis:** Click **Analyze Contract Terms** to process non-standard terms, governing law, and payment terms.
+    ### Risk Categorization Framework
+* **HIGH RISK (Red Banner):** Severe non-standard terms, unlimited liability, unfavorable indemnification, or critical operational risks requiring legal review.
+* **MEDIUM RISK (Yellow Banner):** Non-standard payment terms or termination windows requiring buyer negotiation or fallback redlines.
+* **LOW RISK / STANDARD (Green Banner):** Standard procurement terms aligning with benchmark operational guidelines.
+""")
 # Sidebar Configuration
 with st.sidebar:
     st.header("Configuration")
