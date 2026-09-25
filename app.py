@@ -1,156 +1,107 @@
+mport streamlit as st
+import openai
 import json
-import streamlit as st
-from pypdf import PdfReader
-from openai import OpenAI
+import pypdf
 
-# Page Configuration
-st.set_page_config(
-    page_title="Procurement AI Contract Reviewer",
-    page_icon="📜",
-    layout="wide"
-)
+st.set_page_config(page_title="Contract Term Reviewer & Risk Analysis", layout="wide")
 
-# Sidebar - Settings & API Key
-st.sidebar.title("⚙️ Setup & Settings")
-api_key = st.sidebar.text_input("Enter OpenAI API Key", type="password")
+st.title("Contract Term & Risk Analysis Tool")
+st.write("Automated non-standard clause extraction and risk categorization for procurement contracts.")
 
-# Sidebar - Default Procurement Rulebook
-st.sidebar.markdown("---")
-st.sidebar.subheader("📋 Procurement Rulebook")
-default_rules = """1. Payment Terms: Must be Net 60 days or longer. Net 30 requires buyer approval.
-2. Auto-Renewal: Automatic renewal clauses are strictly prohibited.
-3. Liability Cap: Limitation of liability must be capped at 1x contract value or lower.
-4. Governing Law: Must be governed by state laws of Delaware or Tennessee.
-5. Termination Notice: Must allow termination for convenience with at least 30 days written notice."""
+# Sidebar Configuration
+with st.sidebar:
+    st.header("Configuration")
+    api_key = st.text_input("Enter OpenAI API Key:", type="password")
 
-rulebook = st.sidebar.text_area("Approved Policy Rules", value=default_rules, height=220)
-
-# Main App Header
-st.title("📜 AI Contract Compliance & Risk Screener")
-st.markdown("""
-**Automated First Line of Defense:** Upload vendor agreements (PDF or TXT) to evaluate compliance against standard company procurement playbooks, flag high-risk clauses, and generate suggested redline revisions.
-""")
-
-st.markdown("---")
-
-# Document Upload Section
-col1, col2 = st.columns([1, 1])
-
-contract_text = ""
-
-with col1:
-    st.subheader("1. Upload Contract Document")
-    uploaded_file = st.file_uploader("Upload Vendor Agreement (PDF or TXT)", type=["pdf", "txt"])
+def analyze_contract(text, api_key):
+    client = openai.OpenAI(api_key=api_key)
     
-    if uploaded_file is not None:
-        if uploaded_file.name.endswith(".pdf"):
-            reader = PdfReader(uploaded_file)
-            for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    contract_text += text + "\n"
-        else:
-            contract_text = str(uploaded_file.read(), "utf-8")
-            
-        st.success(f"Successfully loaded: {uploaded_file.name} ({len(contract_text)} characters)")
-        
-        with st.expander("Preview Extracted Contract Text"):
-            st.text_area("Raw Text", value=contract_text[:2000] + "...", height=200)
+    prompt = f"""
+    You are an enterprise procurement contract risk analysis engine.
+    Analyze the following contract text and identify key terms, non-standard clauses, and potential risks.
 
-# Analysis Logic
-with col2:
-    st.subheader("2. Run Compliance Audit")
-    st.info("The AI model will screen the contract against your Procurement Rulebook and generate structured risk flags.")
+    Extract into a valid JSON object with the following keys:
+    - "contract_title": Title or nature of agreement (string)
+    - "parties": Primary parties involved (string)
+    - "payment_terms": Payment terms summary e.g., Net 30, Net 60 (string)
+    - "governing_law": State/jurisdiction (string)
+    - "overall_risk_level": Exactly ONE of ["HIGH", "MEDIUM", "LOW"]
+    - "flagged_risks": Array of objects, each containing:
+        - "clause_type": e.g., Indemnification, Payment Terms, Termination, Liability (string)
+        - "risk_level": Exactly ONE of ["HIGH", "MEDIUM", "LOW"]
+        - "finding": Summary of the non-standard term or issue (string)
+        - "recommendation": Recommended negotiation redline or fallback position (string)
+
+    Contract Text:
+    {text}
+
+    Respond ONLY with a raw JSON object. Do not use markdown code block formatting.
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "system", "content": "You output strict raw JSON objects only."},
+                  {"role": "user", "content": prompt}],
+        temperature=0.0
+    )
     
-    run_analysis = st.button("🔍 Analyze Contract for Risks", type="primary", use_container_width=True)
+    return json.loads(response.choices[0].message.content.strip())
 
-if run_analysis:
+# File Input
+uploaded_file = st.file_uploader("Upload Contract PDF", type=["pdf"])
+
+if st.button("Analyze Contract Terms"):
     if not api_key:
-        st.error("Please enter your OpenAI API Key in the sidebar to run the analysis.")
-    elif not contract_text:
-        st.error("Please upload a contract document first.")
+        st.error("Please enter your OpenAI API key in the sidebar.")
+    elif not uploaded_file:
+        st.warning("Please upload a contract PDF document.")
     else:
-        with st.spinner("Analyzing contract against procurement rulebook..."):
+        with st.spinner("Analyzing contract text for non-standard terms..."):
             try:
-                client = OpenAI(api_key=api_key)
+                pdf_reader = pypdf.PdfReader(uploaded_file)
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text() or ""
                 
-                system_prompt = """You are an expert enterprise Procurement & Legal Operations Analyst.
-Your task is to analyze contract text against a given Procurement Policy Rulebook.
-Output your analysis strictly in valid JSON format with the following structure:
-{
-    "summary": "Brief 2-3 sentence overview of the agreement",
-    "overall_risk": "Low" | "Medium" | "High",
-    "evaluations": [
-        {
-            "rule_name": "Name of the rule being evaluated",
-            "status": "Green" | "Yellow" | "Red",
-            "found_clause": "Exact quote or excerpt from the contract, or 'Not Found'",
-            "issue_description": "Explanation of compliance or violation",
-            "suggested_redline": "Recommended alternative clause language for negotiation"
-        }
-    ]
-}"""
-
-                user_prompt = f"""Procurement Policy Rulebook:
-{rulebook}
-
-Contract Text:
-{contract_text}"""
-
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0.2
-                )
-
-                response_message = response.choices[0].message.content
-                if response_message:
-                    result = json.loads(response_message)
+                result = analyze_contract(text, api_key)
+                
+                st.subheader("Contract Summary")
+                st.write(f"**Title:** {result.get('contract_title', 'N/A')}")
+                st.write(f"**Parties:** {result.get('parties', 'N/A')}")
+                st.write(f"**Payment Terms:** {result.get('payment_terms', 'N/A')}")
+                st.write(f"**Governing Law:** {result.get('governing_law', 'N/A')}")
+                
+                # Overall Risk Banner
+                overall_risk = result.get("overall_risk_level", "LOW")
+                st.subheader("Overall Risk Level")
+                if overall_risk == "HIGH":
+                    st.error("HIGH RISK: Multiple non-standard or unfavorable terms detected requiring legal review.")
+                elif overall_risk == "MEDIUM":
+                    st.warning("MEDIUM RISK: Specific clauses require negotiation or buyer approval.")
                 else:
-                    result = {}
+                    st.success("LOW RISK: Terms align with standard procurement guidelines.")
                 
-                # Display Results
-                st.markdown("---")
-                st.header("📊 Compliance Risk Scorecard")
+                # Flagged Risks Detail
+                st.subheader("Clause-by-Clause Risk Analysis")
+                risks = result.get("flagged_risks", [])
                 
-                summary_col, risk_col = st.columns([3, 1])
-                with summary_col:
-                    st.markdown(f"**Executive Summary:** {result.get('summary', 'N/A')}")
-                with risk_col:
-                    overall_risk = result.get('overall_risk', 'Medium')
-                    if overall_risk == "High":
-                        st.error(f"Overall Risk: {overall_risk}")
-                    elif overall_risk == "Medium":
-                        st.warning(f"Overall Risk: {overall_risk}")
-                    else:
-                        st.success(f"Overall Risk: {overall_risk}")
-
-                st.subheader("Detailed Clause Evaluations")
-                
-                for item in result.get("evaluations", []):
-                    status = item.get("status", "Yellow")
-                    
-                    if status == "Red":
-                        badge = "🚨 RED FLAG (Non-Compliant)"
-                    elif status == "Yellow":
-                        badge = "⚠️ YELLOW FLAG (Needs Review)"
-                    else:
-                        badge = "✅ GREEN FLAG (Compliant)"
+                if not risks:
+                    st.success("No high-risk clauses identified.")
+                else:
+                    for item in risks:
+                        level = item.get("risk_level", "LOW")
+                        clause = item.get("clause_type", "General")
+                        finding = item.get("finding", "")
+                        recommendation = item.get("recommendation", "")
                         
-                    with st.expander(f"{badge} — {item.get('rule_name', 'Rule')}"):
-                        st.markdown("**Found Clause in Contract:**")
-                        st.info(f'"{item.get("found_clause", "N/A")}"')
+                        content = f"**Clause:** {clause}\n\n**Finding:** {finding}\n\n**Recommendation:** {recommendation}"
                         
-                        st.markdown("**Analysis & Issue Description:**")
-                        st.write(item.get("issue_description", "N/A"))
-                        
-                        if status in ["Red", "Yellow"] and item.get("suggested_redline"):
-                            st.markdown("**Suggested Redline / Revision Language:**")
-                            st.code(item.get("suggested_redline"), language="text")
+                        if level == "HIGH":
+                            st.error(content)
+                        elif level == "MEDIUM":
+                            st.warning(content)
+                        else:
+                            st.info(content)
 
             except Exception as e:
-                st.error(f"An error occurred during analysis: {str(e)}")
+                st.error(f"Error processing contract document: {e}")
