@@ -47,23 +47,30 @@ def analyze_contract(text, api_key):
     
     return json.loads(response.choices[0].message.content.strip())
 
-# File Input
-uploaded_file = st.file_uploader("Upload Contract PDF", type=["pdf"])
+# Input Method Selection
+input_type = st.radio("Select Input Source:", ["Paste Contract Text", "Upload Contract PDF"])
+
+raw_text = ""
+
+if input_type == "Paste Contract Text":
+    raw_text = st.text_area("Paste Contract Text or Clause:", height=250, 
+                            placeholder="Paste full agreement text or specific contract clauses here...")
+else:
+    uploaded_file = st.file_uploader("Upload Contract PDF", type=["pdf"])
+    if uploaded_file:
+        pdf_reader = pypdf.PdfReader(uploaded_file)
+        for page in pdf_reader.pages:
+            raw_text += page.extract_text() or ""
 
 if st.button("Analyze Contract Terms"):
     if not api_key:
         st.error("Please enter your OpenAI API key in the sidebar.")
-    elif not uploaded_file:
-        st.warning("Please upload a contract PDF document.")
+    elif not raw_text.strip():
+        st.warning("Please provide contract text or upload a PDF document.")
     else:
         with st.spinner("Analyzing contract text for non-standard terms..."):
             try:
-                pdf_reader = pypdf.PdfReader(uploaded_file)
-                text = ""
-                for page in pdf_reader.pages:
-                    text += page.extract_text() or ""
-                
-                result = analyze_contract(text, api_key)
+                result = analyze_contract(raw_text, api_key)
                 
                 st.subheader("Contract Summary")
                 st.write(f"**Title:** {result.get('contract_title', 'N/A')}")
