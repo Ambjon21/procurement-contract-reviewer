@@ -5,7 +5,7 @@ import PyPDF2
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
-    page_title="Contract Risk & Variance Analyzer",
+    page_title="Contract Risk Analyzer",
     layout="wide"
 )
 
@@ -34,7 +34,7 @@ st.sidebar.info(
 )
 
 # --- MAIN APP HEADER ---
-st.title("Dual-Contract Risk & Variance Analyzer")
+st.title("Contract Risk Analyzer")
 st.markdown(
     "Upload your **Company Standard Terms** alongside the **Vendor Proposal** to generate "
     "a side-by-side gap analysis and recommended counter-proposals."
