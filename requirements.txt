@@ -1,5 +1,3 @@
-pip 
-install 
-streamlit 
-openai 
-PyPDF2
+streamlit
+openai
+pypdf2
